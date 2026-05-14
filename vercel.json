@@ -1,8 +1,12 @@
 {
   "crons": [
     {
+      "path": "/api/peer-interview/matcher",
+      "schedule": "*/2 * * * *"
+    },
+    {
       "path": "/api/cron/interview-reminders",
-      "schedule": "*/10 * * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }
