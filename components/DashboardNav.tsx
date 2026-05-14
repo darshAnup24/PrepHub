@@ -4,13 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useState } from "react";
-import { BookOpen, GraduationCap, Zap, Mic, LogOut, ChevronDown, Brain, Compass, ClipboardList, User, Star } from "lucide-react";
+import { BookOpen, GraduationCap, Zap, Mic, LogOut, ChevronDown, Brain, Compass, ClipboardList, User, Star, Users } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 
 const navItems = [
   { href: "/learn", label: "Learn", icon: GraduationCap },
   { href: "/quiz", label: "Quiz", icon: Zap },
-  { href: "/interview", label: "Interview", icon: Mic },
+  { href: "/interview", label: "AI Interview", icon: Mic },
+  { href: "/peer-interview", label: "Peer Interview", icon: Users },
   { href: "/company-brain", label: "Company Brain", icon: Brain },
   { href: "/career-guide", label: "Career Guide", icon: Compass },
   { href: "/ats", label: "ATS Checker", icon: ClipboardList },

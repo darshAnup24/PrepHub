@@ -1,0 +1,30 @@
+app/api/cron/interview-reminders/route.ts(5,33): error TS2305: Module '"@/lib/resend"' has no exported member 'sendReadyCheckPrompt'.
+app/api/cron/interview-reminders/route.ts(56,61): error TS2339: Property 'earlyReminderSent' does not exist on type 'Document<unknown, {}, IInterviewSession, {}, {}> & IInterviewSession & Required<{ _id: ObjectId; }> & { __v: number; }'.
+app/api/cron/interview-reminders/route.ts(61,11): error TS2554: Expected 3 arguments, but got 2.
+app/api/cron/interview-reminders/route.ts(68,11): error TS2554: Expected 3 arguments, but got 2.
+app/api/cron/interview-reminders/route.ts(77,17): error TS2339: Property 'earlyReminderSent' does not exist on type 'Document<unknown, {}, IInterviewSession, {}, {}> & IInterviewSession & Required<{ _id: ObjectId; }> & { __v: number; }'.
+app/api/cron/interview-reminders/route.ts(82,59): error TS2339: Property 'finalReminderSent' does not exist on type 'Document<unknown, {}, IInterviewSession, {}, {}> & IInterviewSession & Required<{ _id: ObjectId; }> & { __v: number; }'.
+app/api/cron/interview-reminders/route.ts(87,11): error TS2554: Expected 3 arguments, but got 2.
+app/api/cron/interview-reminders/route.ts(95,11): error TS2554: Expected 3 arguments, but got 2.
+app/api/cron/interview-reminders/route.ts(105,17): error TS2339: Property 'finalReminderSent' does not exist on type 'Document<unknown, {}, IInterviewSession, {}, {}> & IInterviewSession & Required<{ _id: ObjectId; }> & { __v: number; }'.
+app/api/cron/interview-reminders/route.ts(113,10): error TS18048: 'session.readyCheckStatus' is possibly 'undefined'.
+app/api/cron/interview-reminders/route.ts(118,9): error TS18048: 'session.readyCheckStatus' is possibly 'undefined'.
+components/ConfirmationDialog.tsx(4,24): error TS2307: Cannot find module 'date-fns' or its corresponding type declarations.
+components/CreateMatchRequest.tsx(4,24): error TS2307: Cannot find module 'date-fns' or its corresponding type declarations.
+components/PeerInterviewPage.tsx(4,24): error TS2307: Cannot find module 'date-fns' or its corresponding type declarations.
+components/ReadyCheckDialog.tsx(4,24): error TS2307: Cannot find module 'date-fns' or its corresponding type declarations.
+lib/batchMatcher.ts(47,35): error TS2802: Type 'MapIterator<[string, (FlattenMaps<IMatchRequest> & Required<{ _id: ObjectId; }> & { __v: number; })[]]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+lib/googleCalendar.ts(25,9): error TS2353: Object literal may only specify known properties, and 'auth_uri' does not exist in type 'JWTInput | ExternalAccountClientOptions'.
+lib/googleCalendar.ts(101,9): error TS2353: Object literal may only specify known properties, and 'auth_uri' does not exist in type 'JWTInput | ExternalAccountClientOptions'.
+lib/googleCalendar.ts(136,9): error TS2353: Object literal may only specify known properties, and 'auth_uri' does not exist in type 'JWTInput | ExternalAccountClientOptions'.
+lib/qstash.ts(48,24): error TS2307: Cannot find module '@upstash/qstash' or its corresponding type declarations.
+lib/reminderNotifications.ts(37,38): error TS2339: Property 'slot' does not exist on type 'FlattenMaps<IInterviewSession> & Required<{ _id: ObjectId; }> & { __v: number; }'.
+lib/reminderNotifications.ts(47,32): error TS2339: Property 'slot' does not exist on type 'FlattenMaps<IInterviewSession> & Required<{ _id: ObjectId; }> & { __v: number; }'.
+lib/reminderNotifications.ts(48,31): error TS2339: Property 'meetLink' does not exist on type 'FlattenMaps<IInterviewSession> & Required<{ _id: ObjectId; }> & { __v: number; }'.
+lib/reminderNotifications.ts(54,32): error TS2339: Property 'slot' does not exist on type 'FlattenMaps<IInterviewSession> & Required<{ _id: ObjectId; }> & { __v: number; }'.
+lib/reminderNotifications.ts(55,31): error TS2339: Property 'meetLink' does not exist on type 'FlattenMaps<IInterviewSession> & Required<{ _id: ObjectId; }> & { __v: number; }'.
+lib/reminderNotifications.ts(67,32): error TS2339: Property 'slot' does not exist on type 'FlattenMaps<IInterviewSession> & Required<{ _id: ObjectId; }> & { __v: number; }'.
+lib/reminderNotifications.ts(68,31): error TS2339: Property 'meetLink' does not exist on type 'FlattenMaps<IInterviewSession> & Required<{ _id: ObjectId; }> & { __v: number; }'.
+lib/reminderNotifications.ts(74,32): error TS2339: Property 'slot' does not exist on type 'FlattenMaps<IInterviewSession> & Required<{ _id: ObjectId; }> & { __v: number; }'.
+lib/reminderNotifications.ts(75,31): error TS2339: Property 'meetLink' does not exist on type 'FlattenMaps<IInterviewSession> & Required<{ _id: ObjectId; }> & { __v: number; }'.
+lib/reminderNotifications.ts(112,19): error TS2339: Property 'slot' does not exist on type 'FlattenMaps<IInterviewSession> & Required<{ _id: ObjectId; }> & { __v: number; }'.

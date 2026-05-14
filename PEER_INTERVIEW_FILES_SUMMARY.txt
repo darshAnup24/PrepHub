@@ -1,0 +1,522 @@
+==============================================================================
+PEER-TO-PEER INTERVIEW SYSTEM - FILES CREATED & SUMMARY
+==============================================================================
+
+This document lists all files created and their purposes.
+
+==============================================================================
+DATABASE MODELS (2 files)
+==============================================================================
+
+1. models/MatchRequest.ts
+   Purpose: Stores user search requests for peer interviews
+   Key fields:
+   - userId: User searching for a match
+   - role: Interview role (Backend, Frontend, etc.)
+   - level: beginner, intermediate, advanced
+   - slot: Desired interview time
+   - status: searching → matched → cancelled/completed
+   
+   Used in: Batch matcher, request creation
+
+2. models/InterviewSession.ts
+   Purpose: Stores matched interview sessions between two users
+   Key fields:
+   - user1Id, user2Id: Matched users
+   - confirmationDeadline: 10-minute confirmation window
+   - meetLink: Google Meet link (created after confirmation)
+   - status: pending_confirmation → confirmed → in_progress → completed
+   - user1Rating, user2Rating: Post-interview ratings (1-5 stars)
+   
+   Used in: Confirmation, ready check, rating submission
+
+==============================================================================
+UTILITY LIBRARIES (4 files)
+==============================================================================
+
+1. lib/googleCalendar.ts
+   Purpose: Google Calendar API integration for Meet links
+   Functions:
+   - createGoogleCalendarEvent(): Creates calendar event + generates Meet link
+   - updateCalendarEvent(): Updates event status
+   - cancelCalendarEvent(): Deletes event and sends cancellation
+   
+   Used in: Confirmation flow (STEP 6A)
+   Credentials needed: Google Service Account
+
+2. lib/resend.ts
+   Purpose: Email notifications via Resend
+   Functions:
+   - sendConfirmationRequest(): "Match found, confirm in 10 mins"
+   - sendReadyCheckReminder(): "Interview starts in 10 mins, are you ready?"
+   - sendInterviewReminder(): 30-min and 5-min reminders with Meet link
+   - sendPostInterviewRating(): "Please rate your interview"
+   
+   Used in: Batch matcher, confirmation, ready check, completion
+   API key: re_C3SJ7WXq_KG627NqsZUd44AHt4s2GXQCn
+
+3. lib/batchMatcher.ts
+   Purpose: Finds compatible users and creates matches
+   Functions:
+   - runBatchMatcher(): Groups requests by role/level/slot, creates sessions
+   
+   Process:
+   1. Find all "searching" requests
+   2. Group by role, level, slot
+   3. For each group with 2+ users:
+      - Create InterviewSession
+      - Send confirmation emails
+      - Update statuses
+   
+   Runs: Every 2-5 minutes via cron job
+
+4. lib/reminderNotifications.ts
+   Purpose: Scheduled reminder emails
+   Functions:
+   - sendReminderNotifications(): Sends 30-min and 5-min reminders
+   - sendPostInterviewSurveys(): Sends rating request emails
+   
+   Used in: Scheduled tasks (optional cron job)
+
+==============================================================================
+API ROUTES (7 files)
+==============================================================================
+
+1. app/api/peer-interview/request/route.ts
+   Methods: POST, GET
+   - POST: Create MatchRequest (STEP 1-2)
+   - GET: Retrieve user's active requests
+   
+   Example:
+   POST /api/peer-interview/request
+   { role: "Backend", level: "intermediate", slot: "2024-05-20T14:00:00Z" }
+
+2. app/api/peer-interview/matcher/route.ts
+   Method: GET
+   Purpose: Batch matcher endpoint (STEP 3)
+   Call: Every 2-5 minutes from cron job
+   Header: Authorization: Bearer CRON_SECRET
+   
+   Process:
+   1. Find matching requests
+   2. Create InterviewSessions
+   3. Send confirmation emails
+
+3. app/api/peer-interview/confirm/route.ts
+   Method: GET
+   Purpose: Handle confirmation requests (STEP 5-6)
+   Query: ?sessionId=...&userId=...&action=accept|decline
+   
+   If both confirm:
+   - Creates Google Calendar event
+   - Generates Meet link
+   - Sends calendar invites
+   Status: pending_confirmation → confirmed
+
+4. app/api/peer-interview/ready/route.ts
+   Method: POST
+   Purpose: Handle ready checks (STEP 11-12)
+   Body: { sessionId, ready: true|false }
+   
+   If both ready:
+   Status: confirmed → in_progress
+   If one declines:
+   Status: confirmed → cancelled
+
+5. app/api/peer-interview/complete/route.ts
+   Method: POST
+   Purpose: Submit post-interview ratings (STEP 13-14)
+   Body: { sessionId, punctuality, communication, usefulness, feedback }
+   
+   Process:
+   1. Store rating
+   2. If both rated: award credits
+   3. Update status: in_progress → completed
+
+6. app/api/peer-interview/sessions/route.ts
+   Method: GET
+   Purpose: Get all user's interview sessions
+   Returns: Array of sessions (active + completed)
+
+7. app/api/peer-interview/session/[id]/route.ts
+   Method: GET
+   Purpose: Get specific session details
+   Returns: Full session object with all details
+
+==============================================================================
+UI COMPONENTS (5 files)
+==============================================================================
+
+1. components/CreateMatchRequest.tsx
+   Purpose: Form to create match request
+   Features:
+   - Role dropdown (Backend, Frontend, DSA, etc.)
+   - Level selector (beginner, intermediate, advanced)
+   - Date picker
+   - Time picker
+   - Submit button
+   - Error handling
+   
+   Props:
+   - onSuccess?: callback when request created
+
+2. components/ConfirmationDialog.tsx
+   Purpose: Modal when match is found
+   Features:
+   - Shows peer's name
+   - Shows role, level, time
+   - 10-minute countdown timer
+   - Accept button (green)
+   - Decline button (red)
+   - Confirmation status
+   
+   Props:
+   - sessionId, peerName, role, level, slotTime
+   - onClose?: callback
+
+3. components/ReadyCheckDialog.tsx
+   Purpose: Modal 10 minutes before interview
+   Features:
+   - Shows peer's name and time
+   - "I'm Ready" button
+   - "Cancel" button
+   - Link to join Google Meet
+   - Explanation text
+   
+   Props:
+   - sessionId, peerName, startTime, meetLink
+   - onClose?: callback
+
+4. components/InterviewRatingModal.tsx
+   Purpose: Post-interview rating form
+   Features:
+   - 5-star rating for 3 categories:
+     * Punctuality
+     * Communication
+     * Usefulness
+   - Optional feedback text area
+   - Submit button
+   - Success message
+   
+   Props:
+   - sessionId, peerName
+   - onClose?: callback
+
+5. components/PeerInterviewPage.tsx
+   Purpose: Main dashboard page
+   Features:
+   - Create match request section
+   - Active requests list
+   - Active sessions list
+   - Stats overview (4 cards)
+   - Dialog management
+   - Auto-refresh every 30 seconds
+   
+   Shows:
+   - Total requests
+   - Active sessions
+   - Searching count
+   - Completed count
+
+==============================================================================
+DOCUMENTATION FILES (2 files)
+==============================================================================
+
+1. PEER_INTERVIEW_SETUP.txt
+   Comprehensive 14-step implementation guide
+   Topics:
+   - Environment setup
+   - Database models
+   - API endpoints overview
+   - Batch matcher setup (3 options)
+   - Notification flow
+   - UI integration
+   - Flow diagram
+   - Credit system
+   - Error handling
+   - Testing guide
+   - Monitoring
+   - Production checklist
+   - Troubleshooting
+   
+   Read this for: Deep understanding of system
+
+2. PEER_INTERVIEW_QUICK_START.txt
+   Step-by-step quick start checklist
+   Phases:
+   1. Setup (30 mins)
+   2. Database (15 mins)
+   3. Google Calendar (30 mins)
+   4. Batch matcher (20 mins)
+   5. Email setup (5 mins)
+   6. UI integration (30 mins)
+   7. End-to-end testing (45 mins)
+   8. Production deployment (1 hour)
+   9. Optional enhancements
+   
+   Read this for: Getting running quickly
+
+==============================================================================
+ENVIRONMENT VARIABLES NEEDED (.env.local)
+==============================================================================
+
+NEW (for P2P system):
+RESEND_API_KEY=re_C3SJ7WXq_KG627NqsZUd44AHt4s2GXQCn
+CRON_SECRET=your-secure-random-string
+GOOGLE_PROJECT_ID=your-project-id
+GOOGLE_PRIVATE_KEY_ID=your-private-key-id
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+GOOGLE_CLIENT_EMAIL=your-service-account@your-project.iam.gserviceaccount.com
+GOOGLE_CERT_URL=https://...
+
+EXISTING (should already have):
+GEMINI_API_KEY=...
+MONGODB_URI=...
+NEXTAUTH_URL=...
+NEXTAUTH_SECRET=...
+
+==============================================================================
+PACKAGE.JSON UPDATES
+==============================================================================
+
+NEW dependencies added:
+- resend: ^3.0.0
+- googleapis: ^136.0.0
+- @googleapis/calendar: ^1.0.0
+
+Install with: npm install
+
+==============================================================================
+FLOW SUMMARY (WHAT HAPPENS WHEN)
+==============================================================================
+
+Timeline:
+
+1. USER CREATES REQUEST
+   → POST /api/peer-interview/request
+   → MatchRequest created (status=searching)
+
+2. EVERY 2-5 MINUTES
+   → Batch matcher runs
+   → Groups compatible requests
+   → If 2+ compatible: create InterviewSession
+   → Send confirmation emails
+
+3. USER CONFIRMS (within 10 mins)
+   → GET /api/peer-interview/confirm?action=accept
+   → If both confirm:
+     * Create Google Calendar event
+     * Generate Meet link
+     * Status → confirmed
+
+4. ONE DECLINES or TIMEOUT
+   → Status → cancelled
+   → Other user back to queue
+
+5. 10 MINS BEFORE INTERVIEW
+   → Ready check email sent
+   → User clicks "I'm Ready"
+   → Status → in_progress
+
+6. INTERVIEW HAPPENS
+   → Users join Google Meet
+
+7. AFTER INTERVIEW
+   → Rating email sent
+   → User submits 5-star ratings
+   → Credits awarded
+   → Status → completed
+
+==============================================================================
+INTEGRATION STEPS
+==============================================================================
+
+To use in your app:
+
+1. Add to dashboard navigation:
+   - Link to /peer-interview page
+
+2. Create page file:
+   - app/(dashboard)/peer-interview/page.tsx
+   - Import PeerInterviewPage component
+
+3. Set up cron job:
+   - Configure Vercel cron or external service
+   - Call /api/peer-interview/matcher every 2 minutes
+
+4. Update User model (optional):
+   - Add credits field
+   - Add reliability score
+
+5. Test end-to-end:
+   - Create requests as 2 users
+   - Run batch matcher
+   - Confirm both sides
+   - Join meeting
+   - Rate each other
+
+==============================================================================
+KEY DESIGN DECISIONS
+==============================================================================
+
+1. No immediate Meet link creation
+   - Saves API quota
+   - Only creates after BOTH confirm
+   - Prevents wasted links
+
+2. 10-minute confirmation window
+   - Gives users time to see email
+   - Prevents abandoned bookings
+   - Auto-cancels after timeout
+
+3. Ready check 10 mins before
+   - Last-minute verification
+   - Catches last-minute cancellations
+   - Improves no-show rate
+
+4. Post-interview rating required
+   - Only way to get credits
+   - Ensures accountability
+   - Builds reputation system
+
+5. Email-based confirmation
+   - No app notification needed
+   - Works for all users
+   - Calendar integration is powerful
+
+==============================================================================
+TESTING CHECKLIST
+==============================================================================
+
+[ ] Create match request as User 1
+[ ] Create match request as User 2 (same role/level/time)
+[ ] Run batch matcher
+[ ] Verify both receive confirmation emails
+[ ] Both click accept
+[ ] Verify Google Calendar event created
+[ ] Verify Meet link in event
+[ ] Check ready check emails 10 mins before
+[ ] Both click "I'm Ready"
+[ ] Verify status changes to in_progress
+[ ] Verify post-interview rating emails
+[ ] Submit ratings
+[ ] Verify status changes to completed
+[ ] Verify credits awarded
+[ ] Test decline scenario
+[ ] Test timeout scenario
+[ ] Test cancellation scenarios
+
+==============================================================================
+FILE STRUCTURE AFTER IMPLEMENTATION
+==============================================================================
+
+PrepHub/
+├── models/
+│   ├── MatchRequest.ts (NEW)
+│   ├── InterviewSession.ts (NEW)
+│   └── ... existing models
+├── lib/
+│   ├── googleCalendar.ts (NEW)
+│   ├── resend.ts (NEW)
+│   ├── batchMatcher.ts (NEW)
+│   ├── reminderNotifications.ts (NEW)
+│   └── ... existing utilities
+├── app/api/peer-interview/
+│   ├── request/route.ts (NEW)
+│   ├── matcher/route.ts (NEW)
+│   ├── confirm/route.ts (NEW)
+│   ├── ready/route.ts (NEW)
+│   ├── complete/route.ts (NEW)
+│   ├── sessions/route.ts (NEW)
+│   └── session/[id]/route.ts (NEW)
+├── components/
+│   ├── CreateMatchRequest.tsx (NEW)
+│   ├── ConfirmationDialog.tsx (NEW)
+│   ├── ReadyCheckDialog.tsx (NEW)
+│   ├── InterviewRatingModal.tsx (NEW)
+│   ├── PeerInterviewPage.tsx (NEW)
+│   └── ... existing components
+├── PEER_INTERVIEW_SETUP.txt (NEW)
+├── PEER_INTERVIEW_QUICK_START.txt (NEW)
+├── package.json (UPDATED)
+├── .env.local.example (UPDATED)
+└── ... existing files
+
+==============================================================================
+WHAT'S NOT INCLUDED (OPTIONAL)
+==============================================================================
+
+These can be added later:
+
+1. Admin dashboard
+   - View all matches
+   - Monitor success rates
+   - Manual intervention
+
+2. Skill-based matching
+   - Parse skills from profiles
+   - Match by specific tech
+
+3. Timezone support
+   - Auto timezone conversion
+   - Cross-timezone matching
+
+4. Analytics
+   - Completion rates by role
+   - User satisfaction trends
+   - Peak times analysis
+
+5. Mobile app
+   - React Native version
+   - Push notifications
+
+6. Video recording
+   - Record interviews (optional)
+   - Post-interview review
+
+7. Interview feedback
+   - AI-generated feedback
+   - Performance metrics
+
+8. Waitlist system
+   - Queue users for next slot
+   - Notify when available
+
+==============================================================================
+SUCCESS METRICS
+==============================================================================
+
+Track these KPIs:
+
+1. Match Success Rate
+   Requests matched / Total requests
+   Goal: 80%+
+
+2. Confirmation Rate
+   Confirmed / Matched
+   Goal: 70%+
+
+3. Completion Rate
+   Completed / Confirmed
+   Goal: 85%+
+
+4. No-Show Rate
+   Goal: < 5%
+
+5. Average Session Duration
+   Should be ~60 minutes
+
+6. User Satisfaction
+   Average rating score
+   Goal: 4.2+ / 5.0
+
+==============================================================================
+
+That's everything! You now have a complete P2P interview matching system
+with email notifications and Google Calendar integration.
+
+Start with PEER_INTERVIEW_QUICK_START.txt for immediate setup.
+Refer to PEER_INTERVIEW_SETUP.txt for detailed documentation.
+
+Good luck!
+==============================================================================

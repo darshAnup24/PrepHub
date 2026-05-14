@@ -1,0 +1,422 @@
+==============================================================================
+PEER-TO-PEER INTERVIEW SYSTEM - QUICK START CHECKLIST
+==============================================================================
+
+This is a step-by-step checklist to quickly implement the P2P interview system.
+
+==============================================================================
+PHASE 1: SETUP (30 MINUTES)
+==============================================================================
+
+[ ] 1. Update environment variables
+    - Copy RESEND_API_KEY: re_C3SJ7WXq_KG627NqsZUd44AHt4s2GXQCn
+    - Copy Google credentials from Google Cloud Console
+    - Add CRON_SECRET: (generate random secure string)
+    - File: .env.local
+
+[ ] 2. Install dependencies
+    npm install resend googleapis
+    npm install
+
+[ ] 3. Review file structure
+    Models created:
+    ✓ models/MatchRequest.ts
+    ✓ models/InterviewSession.ts
+    
+    Utilities created:
+    ✓ lib/googleCalendar.ts
+    ✓ lib/resend.ts
+    ✓ lib/batchMatcher.ts
+    ✓ lib/reminderNotifications.ts
+    
+    API Routes created:
+    ✓ app/api/peer-interview/request/route.ts
+    ✓ app/api/peer-interview/matcher/route.ts
+    ✓ app/api/peer-interview/confirm/route.ts
+    ✓ app/api/peer-interview/ready/route.ts
+    ✓ app/api/peer-interview/complete/route.ts
+    ✓ app/api/peer-interview/sessions/route.ts
+    ✓ app/api/peer-interview/session/[id]/route.ts
+    
+    Components created:
+    ✓ components/CreateMatchRequest.tsx
+    ✓ components/ConfirmationDialog.tsx
+    ✓ components/ReadyCheckDialog.tsx
+    ✓ components/InterviewRatingModal.tsx
+    ✓ components/PeerInterviewPage.tsx
+
+==============================================================================
+PHASE 2: DATABASE (15 MINUTES)
+==============================================================================
+
+[ ] 1. Verify MongoDB connection
+    - Ensure MONGODB_URI is set in .env.local
+    - Test connection: npm run dev and check console for connection message
+
+[ ] 2. Models will auto-create on first use
+    - MatchRequest collection created when first request made
+    - InterviewSession collection created when first match found
+    - No manual migration needed (MongoDB is schema-flexible)
+
+[ ] 3. (Optional) Add credits to User model
+    If you want credit system:
+    - Add credits field to User model
+    - Default: 100 credits
+    - Adjust multipliers in complete/route.ts as needed
+
+==============================================================================
+PHASE 3: GOOGLE CALENDAR (30 MINUTES)
+==============================================================================
+
+[ ] 1. Create Google Cloud Project
+    - Go to console.cloud.google.com
+    - Create new project: "PrepHub"
+
+[ ] 2. Enable Google Calendar API
+    - In APIs & Services > Library
+    - Search "Google Calendar API"
+    - Click Enable
+
+[ ] 3. Create Service Account
+    - Go to APIs & Services > Credentials
+    - Create Credentials > Service Account
+    - Fill details and create
+    - Click the service account email to open it
+    - Go to Keys tab
+    - Create new JSON key
+    - Download JSON file
+
+[ ] 4. Add credentials to .env.local
+    From downloaded JSON file, copy:
+    - project_id → GOOGLE_PROJECT_ID
+    - private_key_id → GOOGLE_PRIVATE_KEY_ID
+    - private_key → GOOGLE_PRIVATE_KEY (include \n literally)
+    - client_email → GOOGLE_CLIENT_EMAIL
+    - client_x509_cert_url → GOOGLE_CERT_URL
+
+[ ] 5. Share Google Calendar with service account
+    - Open your Google Calendar settings
+    - Share calendar with service account email
+    - Grant "Make changes and manage sharing" permission
+    - Save
+
+[ ] 6. Test Calendar API
+    - In your application, create a test match and confirm both users
+    - Should see calendar event in your Google Calendar
+    - Check for Meet link in event
+
+==============================================================================
+PHASE 4: BATCH MATCHER SETUP (20 MINUTES)
+==============================================================================
+
+Choose ONE of these options:
+
+OPTION A: Vercel Cron (RECOMMENDED FOR PRODUCTION)
+[ ] 1. Update package.json with "cron" field in vercel.json
+[ ] 2. Create vercel.json in project root:
+{
+  "crons": [{
+    "path": "/api/peer-interview/matcher",
+    "schedule": "*/2 * * * *"
+  }]
+}
+[ ] 3. Deploy to Vercel: vercel deploy
+
+OPTION B: External Cron Service (EASY FOR TESTING)
+[ ] 1. Go to cron-job.org
+[ ] 2. Create new cron job
+[ ] 3. URL: https://yourdomain.com/api/peer-interview/matcher
+[ ] 4. Headers:
+    Authorization: Bearer [YOUR_CRON_SECRET]
+[ ] 5. Schedule: Every 2 minutes
+[ ] 6. Save and activate
+
+OPTION C: Local Development (FOR TESTING ONLY)
+[ ] 1. Create cron service separately
+[ ] 2. Run alongside Next.js app
+[ ] 3. Not recommended for production
+
+==============================================================================
+PHASE 5: EMAIL SETUP (5 MINUTES)
+==============================================================================
+
+[ ] 1. Verify Resend API key
+    - API key: re_C3SJ7WXq_KG627NqsZUd44AHt4s2GXQCn
+    - Add to .env.local as RESEND_API_KEY
+
+[ ] 2. Test email sending
+    - In app, create a match request
+    - Run batch matcher manually
+    - Check: console.log shows email sending
+    - Check: Resend dashboard for delivery status
+
+[ ] 3. Customize email domain (Optional)
+    - By default: noreply@prephub.dev
+    - To use custom domain:
+      - Add domain in Resend dashboard
+      - Update from: field in lib/resend.ts
+
+==============================================================================
+PHASE 6: INTEGRATE UI (30 MINUTES)
+==============================================================================
+
+[ ] 1. Add page to dashboard
+    - Create app/(dashboard)/peer-interview/page.tsx
+    - Import PeerInterviewPage component:
+    
+    import PeerInterviewPage from "@/components/PeerInterviewPage";
+    export default function Page() {
+      return <PeerInterviewPage />;
+    }
+
+[ ] 2. Add navigation link
+    - Add link to peer interview in dashboard navigation
+    - Link: /peer-interview
+
+[ ] 3. Test create match request
+    - Navigate to page
+    - Fill in role, level, date, time
+    - Click "Find Peer Interview Partner"
+    - Should see request in list with "searching" status
+
+[ ] 4. Test batch matcher
+    - Create 2 match requests with same role/level/slot
+    - Call batch matcher: 
+      curl -X GET http://localhost:3000/api/peer-interview/matcher \
+        -H "Authorization: Bearer $CRON_SECRET"
+    - Should see both requests change to "matched"
+
+==============================================================================
+PHASE 7: END-TO-END TESTING (45 MINUTES)
+==============================================================================
+
+TEST FLOW:
+
+[ ] 1. Test User 1 Creates Request
+    - Log in as User 1
+    - Go to /peer-interview
+    - Create request: Backend, Intermediate, tomorrow 2 PM
+    - See request in "Your Search Requests" section
+    - Status: "searching"
+
+[ ] 2. Test User 2 Creates Request
+    - Log in as User 2 (different browser/incognito)
+    - Go to /peer-interview
+    - Create request: Backend, Intermediate, tomorrow 2 PM (SAME TIME)
+    - See request in section
+    - Status: "searching"
+
+[ ] 3. Run Batch Matcher
+    - Get CRON_SECRET from .env.local
+    - curl -X GET http://localhost:3000/api/peer-interview/matcher \
+      -H "Authorization: Bearer $CRON_SECRET"
+    - Both requests should now be "matched"
+    - Both users should receive confirmation emails
+
+[ ] 4. Test Confirmation (Both Accept)
+    - Check email for confirmation link (check console output)
+    - User 1: Click accept link
+    - User 2: Click accept link
+    - Session status should change to "confirmed"
+    - Both should receive calendar invites
+    - Google Meet link should be created
+
+[ ] 5. Test Ready Check
+    - Wait 10 minutes or manually trigger
+    - Both users get "Are you ready?" prompt
+    - Both click "I'm Ready"
+    - Status changes to "in_progress"
+
+[ ] 6. Test Post-Interview Rating
+    - Manually update session status to "in_progress" in DB
+    - Wait for interview time to pass
+    - Both users receive rating request email
+    - Fill in ratings: punctuality (5), communication (5), usefulness (5)
+    - Submit
+    - Status changes to "completed"
+    - Credits should be awarded
+
+[ ] 7. Test Decline Scenario
+    - Create 2 new requests with same details
+    - Run batch matcher
+    - User 1 clicks "Decline"
+    - Session should be "cancelled"
+    - User 2 should be automatically returned to queue
+
+[ ] 8. Test Timeout Scenario
+    - Create 2 new requests
+    - Run batch matcher
+    - Wait 10+ minutes without confirming
+    - Session should auto-cancel
+    - Both users returned to queue
+
+==============================================================================
+PHASE 8: PRODUCTION DEPLOYMENT (1 HOUR)
+==============================================================================
+
+[ ] 1. Update environment variables
+    - Use production Google credentials
+    - Use strong CRON_SECRET (openssl rand -hex 32)
+    - Update NEXTAUTH_URL to production domain
+    - Verify all API keys are correct
+
+[ ] 2. Deploy to production
+    - git add .
+    - git commit -m "Add peer interview system"
+    - git push
+    - Vercel auto-deploys (or manual deploy)
+
+[ ] 3. Set up Vercel cron
+    - Verify vercel.json has cron configuration
+    - Check Vercel dashboard > Crons
+    - Confirm /api/peer-interview/matcher running every 2 mins
+
+[ ] 4. Monitor first 24 hours
+    - Watch for errors in logs
+    - Check Resend dashboard for email delivery issues
+    - Verify Google Calendar events being created
+    - Check database for proper data flow
+
+[ ] 5. Set up alerts
+    - Configure error tracking (Sentry recommended)
+    - Alert on failed matches
+    - Alert on API errors
+
+==============================================================================
+PHASE 9: OPTIONAL ENHANCEMENTS
+==============================================================================
+
+[ ] 1. Add credits display in User profile
+    - Show current credits
+    - Show interview history
+    - Show reliability score
+
+[ ] 2. Add admin dashboard
+    - View all active sessions
+    - Monitor match success rate
+    - See no-show rate
+
+[ ] 3. Add skill-based matching
+    - Parse skills from profile
+    - Match by specific technologies
+    - More targeted interviews
+
+[ ] 4. Add timezone support
+    - Detect user timezone
+    - Match across timezones
+    - Auto-convert meeting times
+
+[ ] 5. Add analytics
+    - Track completion rates by role/level
+    - User satisfaction scores
+    - Peak interview times
+
+==============================================================================
+TROUBLESHOOTING COMMON ISSUES
+==============================================================================
+
+ISSUE: "Batch matcher not running"
+Solution:
+- Check CRON_SECRET is set and correct
+- Verify Vercel cron is enabled
+- Check vercel.json syntax
+- View Vercel Functions logs
+
+ISSUE: "Confirmation emails not sending"
+Solution:
+- Check RESEND_API_KEY is correct
+- Check Resend dashboard for delivery status
+- Verify email addresses are valid
+- Check spam folder
+
+ISSUE: "Google Calendar events not created"
+Solution:
+- Verify service account credentials in .env
+- Check Google Cloud permissions
+- Confirm Calendar API is enabled
+- Check error logs for authentication issues
+
+ISSUE: "Users not being matched"
+Solution:
+- Verify batch matcher is running
+- Check requests have exact same role/level/slot
+- Ensure both users exist in database
+- Check for timezone issues
+
+ISSUE: "Meet links not generating"
+Solution:
+- Verify Google credentials are correct
+- Check conference data version in API call
+- Ensure Google Calendar API is enabled
+- Check error logs for API failures
+
+==============================================================================
+USEFUL COMMANDS
+==============================================================================
+
+Test batch matcher:
+curl -X GET http://localhost:3000/api/peer-interview/matcher \
+  -H "Authorization: Bearer $CRON_SECRET"
+
+Get user sessions:
+curl -X GET http://localhost:3000/api/peer-interview/sessions \
+  -H "Cookie: [your-session-cookie]"
+
+Create test request:
+curl -X POST http://localhost:3000/api/peer-interview/request \
+  -H "Content-Type: application/json" \
+  -d '{"role":"Backend","level":"intermediate","slot":"2024-05-20T14:00:00Z"}'
+
+View database:
+mongo $MONGODB_URI
+db.matchrequests.find()
+db.interviewsessions.find()
+
+View logs:
+vercel logs api/peer-interview/matcher
+
+==============================================================================
+SUPPORT
+==============================================================================
+
+Documentation: See PEER_INTERVIEW_SETUP.txt for detailed guide
+Files created: All components, utilities, and routes are fully documented
+API endpoints: Each route file has detailed comments explaining functionality
+Components: Each component has inline documentation
+
+For issues:
+1. Check route logs
+2. Check Resend/Google dashboard
+3. Check database entries
+4. Review error messages in console
+
+==============================================================================
+SUCCESS METRICS
+==============================================================================
+
+Your system is working if:
+✓ Users can create match requests
+✓ Batch matcher finds compatible users every 2-5 minutes
+✓ Both users receive confirmation emails within 1 minute
+✓ After confirmation, Google Calendar event is created with Meet link
+✓ Both users receive ready check prompt 10 minutes before
+✓ Interview can proceed with Google Meet
+✓ Post-interview ratings can be submitted
+✓ Credits are awarded after rating submission
+
+==============================================================================
+NEXT STEPS
+==============================================================================
+
+After launch:
+1. Monitor system for 1 week
+2. Adjust matching algorithm if needed
+3. Collect user feedback
+4. Implement optional enhancements
+5. Scale to more users
+6. Add skill-based matching
+7. Build analytics dashboard
+8. Create mobile app support
+
+Good luck with your peer interview platform!
+==============================================================================

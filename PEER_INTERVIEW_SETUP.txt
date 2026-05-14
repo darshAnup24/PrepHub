@@ -1,0 +1,500 @@
+==============================================================================
+PEER-TO-PEER INTERVIEW MATCHING SYSTEM - IMPLEMENTATION GUIDE
+==============================================================================
+
+This guide walks you through implementing the peer-to-peer interview matching
+feature with Resend notifications and Google Calendar integration.
+
+==============================================================================
+STEP 1: ENVIRONMENT SETUP
+==============================================================================
+
+1. Create or update your .env.local file with the following variables:
+
+RESEND_API_KEY=re_C3SJ7WXq_KG627NqsZUd44AHt4s2GXQCn
+CRON_SECRET=your-secure-random-string-here
+
+Google Calendar Setup (IMPORTANT - Service Account):
+GOOGLE_PROJECT_ID=your-project-id
+GOOGLE_PRIVATE_KEY_ID=your-private-key-id
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+GOOGLE_CLIENT_EMAIL=your-service-account@your-project.iam.gserviceaccount.com
+GOOGLE_CLIENT_ID=804053047509-0762u7okgmfcsnb2mre6nm5gq79s1k3e.apps.googleusercontent.com
+GOOGLE_CERT_URL=https://www.googleapis.com/robot/v1/metadata/x509/your-service-account%40your-project.iam.gserviceaccount.com
+
+P2P Interview Settings (Optional - defaults provided):
+MATCH_BATCH_INTERVAL_MINUTES=2
+CONFIRMATION_TIMEOUT_MINUTES=10
+READY_CHECK_MINUTES_BEFORE=10
+REMINDER_EARLY_MINUTES=30
+REMINDER_FINAL_MINUTES=5
+
+2. Install dependencies:
+npm install resend googleapis
+
+3. To get Google Calendar credentials:
+   a. Go to Google Cloud Console
+   b. Create a new project
+   c. Enable Google Calendar API
+   d. Create a Service Account
+   e. Generate a JSON key
+   f. Copy the credentials to your .env.local
+
+==============================================================================
+STEP 2: DATABASE MODELS
+==============================================================================
+
+Two new MongoDB models have been created:
+
+1. MatchRequest - Stores user search requests
+   - userId: User ID searching for a match
+   - role: Interview role (Backend, Frontend, DSA, etc.)
+   - level: beginner, intermediate, advanced
+   - slot: Scheduled interview time
+   - status: searching, matched, cancelled, completed
+   - createdAt: When request was created
+
+2. InterviewSession - Stores matched interview sessions
+   - user1Id, user2Id: IDs of matched users
+   - role, level: Interview details
+   - slot: Scheduled time
+   - status: pending_confirmation → confirmed → in_progress → completed
+   - confirmationDeadline: 10 minutes from match
+   - meetLink: Google Meet link (created after both confirm)
+   - calendarEventId: Google Calendar event ID
+   - user1Confirmation, user2Confirmation: {confirmed, confirmedAt, ready, readyAt}
+   - user1Rating, user2Rating: Post-interview ratings
+
+==============================================================================
+STEP 3: USER MODEL UPDATE (OPTIONAL)
+==============================================================================
+
+To track user credits and reliability score, optionally add to User model:
+
+credits: { type: Number, default: 100 },
+reliability: { type: Number, default: 100 },
+interviewsCompleted: { type: Number, default: 0 },
+noShowCount: { type: Number, default: 0 },
+
+This enables credit-based system and no-show penalties.
+
+==============================================================================
+STEP 4: API ENDPOINTS OVERVIEW
+==============================================================================
+
+All endpoints are under /api/peer-interview/:
+
+1. CREATE MATCH REQUEST
+   POST /api/peer-interview/request
+   Body: { role, level, slot }
+   Returns: MatchRequest object
+
+2. GET USER'S REQUESTS
+   GET /api/peer-interview/request
+   Returns: Array of user's MatchRequests
+
+3. BATCH MATCHER (Run via cron)
+   GET /api/peer-interview/matcher
+   Headers: { Authorization: "Bearer CRON_SECRET" }
+   Returns: { matched, errors }
+   Purpose: Runs every 2-5 minutes to find and match compatible users
+
+4. CONFIRMATION DIALOG
+   GET /api/peer-interview/confirm
+   Query: ?sessionId=...&userId=...&action=accept|decline
+   Returns: Updated InterviewSession
+
+5. READY CHECK
+   POST /api/peer-interview/ready
+   Body: { sessionId, ready: boolean }
+   Returns: Updated InterviewSession
+
+6. POST-INTERVIEW RATING
+   POST /api/peer-interview/complete
+   Body: { sessionId, punctuality, communication, usefulness, feedback }
+   Returns: Updated InterviewSession with credits awarded
+
+7. GET SESSION DETAILS
+   GET /api/peer-interview/session/[id]
+   Returns: Full InterviewSession details
+
+==============================================================================
+STEP 5: SETTING UP BATCH MATCHER (CRON JOB)
+==============================================================================
+
+The batch matcher needs to run every 2-5 minutes. Choose one approach:
+
+OPTION A: Using Vercel Cron (Recommended for production)
+----------------------------------------------------
+1. Create app/api/cron/matcher/route.ts:
+
+import { NextRequest, NextResponse } from "next/server";
+import { runBatchMatcher } from "@/lib/batchMatcher";
+
+export async function GET(req: NextRequest) {
+  try {
+    const authHeader = req.headers.get("authorization");
+    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const result = await runBatchMatcher();
+    return NextResponse.json({ success: true, ...result });
+  } catch (error) {
+    console.error("[Matcher Cron Error]", error);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  }
+}
+
+2. In vercel.json (create if doesn't exist):
+
+{
+  "crons": [{
+    "path": "/api/cron/matcher",
+    "schedule": "*/2 * * * *"
+  }]
+}
+
+OPTION B: Using External Cron Service
+--------------------------------------
+Use services like:
+- CRON-JOB.org (free)
+- EasyCron
+- AWS EventBridge
+
+Configure to call:
+GET https://yourdomain.com/api/peer-interview/matcher
+Header: Authorization: Bearer YOUR_CRON_SECRET
+
+Every 2-5 minutes.
+
+OPTION C: Self-hosted Node.js Cron
+-----------------------------------
+Create a separate cron service:
+
+import cron from "node-cron";
+import { runBatchMatcher } from "./lib/batchMatcher";
+
+// Run every 2 minutes
+cron.schedule("*/2 * * * *", async () => {
+  console.log("Running batch matcher...");
+  await runBatchMatcher();
+});
+
+==============================================================================
+STEP 6: NOTIFICATION FLOW
+==============================================================================
+
+The system sends emails at critical points:
+
+1. MATCH FOUND (10 mins to confirm)
+   - Both users receive confirmation request
+   - Email has Accept/Decline buttons
+   - Auto-cancels if not confirmed in 10 minutes
+
+2. READY CHECK (10 mins before interview)
+   - Both users get "Are you ready?" prompt
+   - Can confirm or cancel
+   - If one cancels, session is terminated
+
+3. REMINDERS
+   - 30 minutes before: "Starting in 30 mins"
+   - 5 minutes before: "Starting in 5 mins" + Meet link
+
+4. POST-INTERVIEW
+   - Email asking for rating
+   - 1-5 star ratings on punctuality, communication, usefulness
+
+==============================================================================
+STEP 7: UI INTEGRATION
+==============================================================================
+
+Four components have been created:
+
+1. CreateMatchRequest.tsx
+   - Form to select role, level, date, time
+   - Creates match request
+   - Shows: role dropdown, level, date/time picker
+
+2. ConfirmationDialog.tsx
+   - Shows when match is found
+   - 10-minute countdown
+   - Accept/Decline buttons
+
+3. ReadyCheckDialog.tsx
+   - 10 minutes before interview
+   - "Are you ready?" confirmation
+   - Cancel option
+   - Link to join Google Meet
+
+4. InterviewRatingModal.tsx
+   - Shows after interview
+   - 5-star ratings for 3 categories
+   - Optional feedback text
+   - Submits ratings and credits
+
+Example integration:
+-------------------
+import CreateMatchRequest from "@/components/CreateMatchRequest";
+
+export default function PeerInterviewPage() {
+  return (
+    <div>
+      <CreateMatchRequest onSuccess={() => {
+        // Refresh requests or show success
+      }} />
+      {/* Show active sessions, ready checks, etc. */}
+    </div>
+  );
+}
+
+==============================================================================
+STEP 8: FLOW DIAGRAM (Timeline)
+==============================================================================
+
+User 1 selects slot
+    ↓
+Creates MatchRequest (status = SEARCHING)
+    ↓
+[Every 2-5 mins: Batch matcher runs]
+    ↓
+Batch Matcher finds compatible User 2
+    ↓
+Creates InterviewSession (status = PENDING_CONFIRMATION)
+    ↓
+Sends confirmation emails to both
+    ↓
+Both users have 10 minutes to confirm
+    ↓
+BOTH CONFIRM → Google Meet link created, calendar event sent
+                User1/2 Confirmation: confirmed=true
+                Session status = CONFIRMED
+    ↓
+One user declines or timeout → Session cancelled
+                               Other user returned to queue
+    ↓
+10 mins before interview → Ready check email
+    ↓
+BOTH CLICK READY → Session status = IN_PROGRESS
+    ↓
+Users join Google Meet and conduct interview
+    ↓
+After interview → Rating email sent
+    ↓
+Both rate each other
+    ↓
+Credits awarded, session status = COMPLETED
+
+==============================================================================
+STEP 9: CREDIT SYSTEM (Optional but Recommended)
+==============================================================================
+
+Credits are awarded based on:
+- Base: 10 credits for completing interview
+- Bonus: +5 credits if average rating >= 4.5 (excellent)
+- Bonus: +3 credits if average rating >= 4.0 (good)
+
+Penalties:
+- No-show: -5 credits
+- Late: -2 credits
+- Decline after confirming: -3 credits
+
+Implement in User model:
+- credits: Running credit balance
+- reliability: Score based on completion rate
+- noShowCount: Track no-shows
+
+==============================================================================
+STEP 10: ERROR HANDLING & EDGE CASES
+==============================================================================
+
+Handled scenarios:
+
+1. Confirmation Timeout
+   - After 10 mins, if not both confirmed, session cancelled
+   - Other user returned to queue
+   - No Meet link created (saves API quota)
+
+2. Ready Check Timeout
+   - If user doesn't respond in 10 mins, session proceeds
+   - If one cancels at ready check, session is cancelled
+
+3. No-Show
+   - User joins late/doesn't show
+   - Can be marked and penalty applied
+   - Affects reliability score
+
+4. User Declines After Match
+   - Session cancelled immediately
+   - Other user put back in queue
+   - Can continue searching
+
+5. Google Calendar Failure
+   - Session still confirmed even if Calendar fails
+   - Meet link generated later or provided via email
+   - Graceful degradation
+
+==============================================================================
+STEP 11: TESTING THE SYSTEM
+==============================================================================
+
+1. Test Match Creation:
+   curl -X POST http://localhost:3000/api/peer-interview/request \
+     -H "Content-Type: application/json" \
+     -d '{
+       "role": "Backend",
+       "level": "intermediate",
+       "slot": "2024-05-20T14:00:00Z"
+     }'
+
+2. Test Batch Matcher:
+   curl -X GET http://localhost:3000/api/peer-interview/matcher \
+     -H "Authorization: Bearer your-cron-secret"
+
+3. Test Confirmation:
+   curl "http://localhost:3000/api/peer-interview/confirm?sessionId=...&userId=...&action=accept"
+
+4. Manual Testing:
+   - Create 2 user accounts
+   - Both create match requests with same role, level, slot
+   - Run batch matcher manually
+   - Check confirmation emails in Resend dashboard
+   - Click confirmation links
+
+==============================================================================
+STEP 12: MONITORING & LOGS
+==============================================================================
+
+Monitor these key metrics:
+
+1. Match Success Rate
+   - Total requests / matches created
+   - Target: 80%+
+
+2. Confirmation Rate
+   - Confirmed sessions / matched sessions
+   - Target: 70%+
+
+3. Completion Rate
+   - Completed interviews / confirmed sessions
+   - Target: 85%+
+
+4. No-Show Rate
+   - Target: < 5%
+
+5. Average Session Duration
+   - Should be ~1 hour
+
+Check logs in:
+- Vercel dashboard (if using Vercel)
+- Google Cloud Logs (for Calendar API)
+- Resend dashboard (for email delivery)
+
+==============================================================================
+STEP 13: FUTURE ENHANCEMENTS
+==============================================================================
+
+1. Skill Matching
+   - Match users by specific technologies/skills
+   - Not just role and level
+
+2. Timezone Awareness
+   - Match users in compatible timezones
+   - Auto-convert slot times
+
+3. Reputation System
+   - Track user reliability scores
+   - Prioritize matching high-reputation users
+
+4. AI-Based Scoring
+   - Rate answer quality using Gemini
+   - Provide feedback on common mistakes
+
+5. Recording & Playback
+   - Record interviews (with consent)
+   - Allow users to review their performance
+
+6. Waitlist Management
+   - Queue users for next available slot
+   - Notify when match is available
+
+7. Analytics Dashboard
+   - Track completion rates by role/level
+   - User performance trends
+
+==============================================================================
+STEP 14: PRODUCTION DEPLOYMENT CHECKLIST
+==============================================================================
+
+Before going to production:
+
+✓ Update all .env variables (don't use development secrets)
+✓ Set CRON_SECRET to a strong random value
+✓ Configure Google Service Account with correct permissions
+✓ Test Resend email delivery
+✓ Set up Google Calendar event sync
+✓ Configure Vercel cron jobs
+✓ Add monitoring/alerting for failed matches
+✓ Set up error tracking (Sentry recommended)
+✓ Test all edge cases (timeouts, failures, etc.)
+✓ Load test batch matcher (simulate 1000+ concurrent requests)
+✓ Review privacy/security for email links
+✓ Implement rate limiting on API endpoints
+✓ Add user consent for calendar event creation
+✓ Document API for frontend developers
+✓ Create admin dashboard to monitor system health
+✓ Set up database backups
+
+==============================================================================
+SUPPORT & TROUBLESHOOTING
+==============================================================================
+
+Common Issues:
+
+1. Matches not being created
+   - Check if CRON_SECRET is set and matching
+   - Verify batch matcher is being called
+   - Check logs for errors in batchMatcher.ts
+
+2. Google Calendar events not created
+   - Verify service account credentials in .env
+   - Check Google Cloud project permissions
+   - Ensure Calendar API is enabled
+
+3. Emails not sending
+   - Verify RESEND_API_KEY is correct
+   - Check Resend dashboard for delivery status
+   - Check spam folder
+
+4. Confirmation links not working
+   - Verify NEXTAUTH_URL is correct
+   - Check if email links are being opened (tracking)
+   - Ensure session IDs match
+
+5. Ready check dialog not showing
+   - Verify component is being rendered
+   - Check if session exists in database
+   - Check browser console for errors
+
+==============================================================================
+CONCLUSION
+==============================================================================
+
+Your peer-to-peer interview matching system is now ready!
+
+Key Features Implemented:
+✓ Automatic user matching every 2-5 minutes
+✓ 10-minute confirmation window
+✓ Google Calendar integration with Meet links
+✓ Resend email notifications at critical points
+✓ Ready check 10 minutes before interview
+✓ Post-interview ratings and credit system
+✓ Comprehensive error handling and edge cases
+
+For questions or issues, refer to:
+- API documentation in route.ts files
+- Component usage examples in their respective files
+- lib/ utilities for core logic
+
+Good luck with your peer interview platform!
+==============================================================================
